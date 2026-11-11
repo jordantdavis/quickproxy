@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,7 +18,13 @@ import (
 func main() {
 	configPath := flag.String("config", "routes.json", "path to the JSON route file")
 	listen := flag.String("listen", "", "listen address (overrides \"listen\" in the file; default 127.0.0.1:8080)")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(versionString())
+		return
+	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
@@ -66,7 +73,7 @@ func main() {
 	for _, r := range table.Routes() {
 		log.Info("route", "pattern", r.Pattern, "target", r.Target)
 	}
-	log.Info("listening", "addr", addr)
+	log.Info("listening", "addr", addr, "version", versionString())
 	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("serve", "err", err)
 		os.Exit(1)
