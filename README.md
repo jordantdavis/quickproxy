@@ -17,6 +17,26 @@ You can set two environment variables:
 - `VERSION`: the release tag to install, for example `v1.0.0`. The default is the latest release.
 - `INSTALL_DIR`: the folder for the binary. The default is `$HOME/.local/bin`.
 
+## Update
+
+To replace the installed binary with the latest release, run:
+
+```sh
+quickproxy update
+```
+
+The command downloads the archive for your OS and CPU architecture and compares it to `checksums.txt`. It runs the new binary with `-version` to make sure that it works. Then it replaces the file that you ran. The command must be able to write to the folder of the binary.
+
+A running server continues to use the old version. After the update, restart quickproxy.
+
+Flags for `update`:
+
+- `-check`: print the current and the latest version, and do not change a file. The exit code is 0 if you have the latest version, and 1 if a newer release exists.
+- `-version`: install this release tag, for example `v1.0.0`. You can use it to go back to an older release.
+- `-force`: install the release even if you already have that version. You must use `-force` or `-version` to replace a binary that you built from source, because its version is `dev`.
+
+Release v0.1.0 and earlier releases do not have this command. If you have one of those releases, run the install script again to get a release with `update`.
+
 ## Build and run
 
 1. In this folder, run `mise install` to get the Go version in `mise.toml`.
