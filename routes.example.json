@@ -1,0 +1,9 @@
+{
+  "listen": "127.0.0.1:8080",
+  "routes": {
+    "/grafana": "http://127.0.0.1:3000",
+    "/team/a/dashboard": "http://127.0.0.1:7000/dash",
+    "/in/{val}/path": "http://127.0.0.1:5000/api/{val}",
+    "/users/{id}/files": "http://127.0.0.1:6000/storage/{id}"
+  }
+}
