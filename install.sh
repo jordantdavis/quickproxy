@@ -71,7 +71,7 @@ got=$($sha "$tmp/$name.tar.gz" | awk '{ print $1 }')
 tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
 mkdir -p "$INSTALL_DIR"
 install -m 0755 "$tmp/$name/quickproxy" "$INSTALL_DIR/quickproxy"
-echo "Installed $INSTALL_DIR/quickproxy ($("$INSTALL_DIR/quickproxy" -version))"
+echo "Installed $INSTALL_DIR/quickproxy: $("$INSTALL_DIR/quickproxy" -version)"
 
 case ":$PATH:" in
 *":$INSTALL_DIR:"*) ;;
