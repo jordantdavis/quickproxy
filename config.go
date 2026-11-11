@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -14,6 +15,21 @@ import (
 type Config struct {
 	Listen string            `json:"listen"`
 	Routes map[string]string `json:"routes"`
+}
+
+// defaultConfigPath returns $XDG_CONFIG_HOME/quickproxy/routes.json, or
+// ~/.config/quickproxy/routes.json when XDG_CONFIG_HOME is unset or relative.
+// It uses the same rule on macOS and Linux.
+func defaultConfigPath(getenv func(string) string, home func() (string, error)) (string, error) {
+	dir := getenv("XDG_CONFIG_HOME")
+	if !filepath.IsAbs(dir) {
+		h, err := home()
+		if err != nil {
+			return "", fmt.Errorf("find default route file: %w", err)
+		}
+		dir = filepath.Join(h, ".config")
+	}
+	return filepath.Join(dir, "quickproxy", "routes.json"), nil
 }
 
 // LoadConfig reads, parses and compiles the configuration file.

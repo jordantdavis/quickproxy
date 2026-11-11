@@ -18,7 +18,8 @@ go test -race ./...                # all tests, as CI runs them
 go test -race -run TestMatch .     # one test
 gofmt -l .                         # CI fails if this prints any file
 go vet ./...
-./quickproxy -config routes.json   # run, after copying routes.example.json to routes.json
+./quickproxy                       # run with ~/.config/quickproxy/routes.json (or $XDG_CONFIG_HOME)
+./quickproxy -config routes.json   # run with a local copy of routes.example.json
 ```
 
 CI (`.github/workflows/ci.yml`) runs gofmt, vet, `go test -race` and build. The release workflow runs on a `v*` tag. It reuses CI, then builds linux and darwin binaries for amd64 and arm64. It sets the version with `-ldflags "-X main.version=<tag>"`.
@@ -31,6 +32,7 @@ The request path is `main.go` → `Server.ServeHTTP` (`proxy.go`) → `Table.Mat
 - A `Match` carries `Prefix` (the public prefix with values filled in), `Base` (the backend base path) and `Rest` (the remainder). All three are in escaped (wire) form. Matching compares decoded segments, but the proxy sends escaped segments to the backend. When you edit path code, keep this split.
 - `Match.publicPath` and `rewriteLocation` map backend paths back to the public prefix. `modifyResponse` in `proxy.go` uses them for `Location` headers and `Set-Cookie` paths.
 - `proxy.go` stores the `*Match` in the request context under `ctxKey{}`. `rewrite`, `modifyResponse` and the `ErrorHandler` read it from there. `Rest == ""` gives a 308 redirect to the prefix with a trailing slash. `/` (the route index page) and `/_health` are served before matching. Requests with `.` or `..` segments get a 400.
+- Without `-config`, `main` uses `defaultConfigPath` (`config.go`): `$XDG_CONFIG_HOME/quickproxy/routes.json`, else `~/.config/quickproxy/routes.json`, on macOS and Linux. If that default file is missing, the server starts with an empty table, and `watchConfig` loads the file when it appears. A missing file given with `-config` is still an error.
 - The route table is in an `atomic.Pointer`. `Server.SetTable` swaps it during live requests without locks. `watchConfig` in `config.go` polls the file mtime and size every 2 seconds. It also reloads on SIGHUP. If a reload fails, the server logs the error and keeps the old table. A change to `listen` needs a restart.
 - `ReverseProxy.FlushInterval` is -1, and `statusWriter.Unwrap` exposes the real writer. Both are necessary for server-sent events and WebSocket upgrades. Do not remove them.
 - The proxy keeps the inbound `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` headers, because Tailscale sets them. It also adds `X-Forwarded-Prefix`. This is safe only on loopback.
