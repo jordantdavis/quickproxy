@@ -21,10 +21,9 @@ You can set two environment variables:
 
 1. In this folder, run `mise install` to get the Go version in `mise.toml`.
 2. Run `go build -o quickproxy .`
-3. Run `mkdir -p ~/.config/quickproxy`
-4. Copy `routes.example.json` to `~/.config/quickproxy/routes.json` and edit the routes.
-5. Run `./quickproxy`
-6. On the same machine, run `tailscale serve 8080`.
+3. Run `./quickproxy`. It creates `~/.config/quickproxy/` and starts with no routes.
+4. Copy `routes.example.json` to `~/.config/quickproxy/routes.json` and edit the routes. quickproxy loads the file within 2 seconds.
+5. On the same machine, run `tailscale serve 8080`.
 
 Flags:
 
@@ -44,7 +43,7 @@ The release workflow builds binaries for Linux and macOS, on amd64 and arm64. It
 
 If you do not give `-config`, quickproxy uses `$XDG_CONFIG_HOME/quickproxy/routes.json`. If `XDG_CONFIG_HOME` is not set or is not an absolute path, quickproxy uses `~/.config/quickproxy/routes.json`. The rule is the same on macOS and Linux.
 
-If the default file does not exist, quickproxy starts with no routes. It logs the path that it expects, and `/` and `/_health` work. When you create the file, quickproxy loads it within 2 seconds.
+If the directory does not exist, quickproxy creates it. If the default file does not exist, quickproxy starts with no routes. It logs the path that it expects, and `/` and `/_health` work. When you create the file, quickproxy loads it within 2 seconds.
 
 If you give `-config` and the file does not exist, quickproxy exits with an error. quickproxy does not read `./routes.json` automatically. To use it, run `./quickproxy -config routes.json`.
 

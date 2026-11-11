@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -39,6 +40,10 @@ func main() {
 			os.Exit(1)
 		}
 		*configPath, optional = p, true
+		// Create the directory, so that the user only has to add the file.
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			log.Warn("create config directory", "err", err)
+		}
 	}
 	log.Info("config", "path", *configPath)
 
