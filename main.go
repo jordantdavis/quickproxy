@@ -18,6 +18,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		os.Exit(runUpdate(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	configPath := flag.String("config", "", "path to the JSON route file (default $XDG_CONFIG_HOME/quickproxy/routes.json or ~/.config/quickproxy/routes.json)")
 	listen := flag.String("listen", "", "listen address (overrides \"listen\" in the file; default 127.0.0.1:8080)")
 	showVersion := flag.Bool("version", false, "print the version and exit")

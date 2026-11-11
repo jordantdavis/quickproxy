@@ -36,6 +36,7 @@ The request path is `main.go` → `Server.ServeHTTP` (`proxy.go`) → `Table.Mat
 - The route table is in an `atomic.Pointer`. `Server.SetTable` swaps it during live requests without locks. `watchConfig` in `config.go` polls the file mtime and size every 2 seconds. It also reloads on SIGHUP. If a reload fails, the server logs the error and keeps the old table. A change to `listen` needs a restart.
 - `ReverseProxy.FlushInterval` is -1, and `statusWriter.Unwrap` exposes the real writer. Both are necessary for server-sent events and WebSocket upgrades. Do not remove them.
 - The proxy keeps the inbound `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` headers, because Tailscale sets them. It also adds `X-Forwarded-Prefix`. This is safe only on loopback.
+- `quickproxy update` is a subcommand that `main` handles before `flag.Parse`. `update.go` does the same steps as `install.sh`: it finds the latest tag from the `releases/latest` redirect, compares the SHA-256 sum, and renames the new binary over `os.Executable()` after it runs `-version` on it. The asset names must match `release.yml`. Every release must keep the `-version` flag, because `update` uses it as a smoke test.
 - `version.go` adds the short git revision from `debug.ReadBuildInfo` to `version`.
 
 ## Tests
