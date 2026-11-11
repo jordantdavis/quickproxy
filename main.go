@@ -7,10 +7,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -20,7 +22,7 @@ func main() {
 		os.Exit(runUpdate(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
-	configPath := flag.String("config", "routes.json", "path to the JSON route file")
+	configPath := flag.String("config", "", "path to the JSON route file (default $XDG_CONFIG_HOME/quickproxy/routes.json or ~/.config/quickproxy/routes.json)")
 	listen := flag.String("listen", "", "listen address (overrides \"listen\" in the file; default 127.0.0.1:8080)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
@@ -32,8 +34,30 @@ func main() {
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
+	// Without -config, the default file is optional: if it is missing, start
+	// with no routes and let watchConfig load it when it appears.
+	optional := false
+	if *configPath == "" {
+		p, err := defaultConfigPath(os.Getenv, os.UserHomeDir)
+		if err != nil {
+			log.Error("load config", "err", err)
+			os.Exit(1)
+		}
+		*configPath, optional = p, true
+		// Create the directory, so that the user only has to add the file.
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			log.Warn("create config directory", "err", err)
+		}
+	}
+	log.Info("config", "path", *configPath)
+
 	cfg, table, err := LoadConfig(*configPath)
-	if err != nil {
+	switch {
+	case optional && errors.Is(err, fs.ErrNotExist):
+		log.Warn("no route file; starting with no routes", "path", *configPath)
+		cfg = &Config{}
+		table, _ = NewTable(nil)
+	case err != nil:
 		log.Error("load config", "err", err)
 		os.Exit(1)
 	}
