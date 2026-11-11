@@ -16,6 +16,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		os.Exit(runUpdate(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	configPath := flag.String("config", "routes.json", "path to the JSON route file")
 	listen := flag.String("listen", "", "listen address (overrides \"listen\" in the file; default 127.0.0.1:8080)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
