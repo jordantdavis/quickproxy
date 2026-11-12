@@ -42,7 +42,7 @@ Release v0.1.0 and earlier releases do not have this command. If you have one of
 1. In this folder, run `mise install` to get the Go version in `mise.toml`.
 2. Run `go build -o quickproxy .`
 3. Run `./quickproxy`. It creates `~/.config/quickproxy/` and starts with no routes.
-4. Copy `routes.example.json` to `~/.config/quickproxy/routes.json` and edit the routes. quickproxy loads the file within 2 seconds.
+4. Add a route with `./quickproxy create route /grafana http://127.0.0.1:3000`. You can also copy `routes.example.json` to `~/.config/quickproxy/routes.json` and edit it. quickproxy loads the file within 2 seconds.
 5. On the same machine, run `tailscale serve 8080`.
 
 Flags:
@@ -50,6 +50,40 @@ Flags:
 - `-config`: the path to the route file. The default is in your home directory. See "Route file location".
 - `-listen`: the listen address. This overrides `listen` in the file. The default is `127.0.0.1:8080`.
 - `-version`: print the version and exit.
+
+## Manage routes from the command line
+
+The `get`, `create` and `delete` subcommands read and change the route file. The command shape is the same as in kubectl: a verb, a resource type, then names and flags. A running server loads each change within 2 seconds.
+
+```sh
+quickproxy get routes
+quickproxy create route /abc http://127.0.0.1:3001/alpha
+quickproxy create route /abc http://127.0.0.1:3002 --overwrite
+quickproxy delete route /abc
+```
+
+The resource type can be `routes`, `route` or `rt`. The commands use the same file as the server. To use a different file, add `-config PATH`. You can put flags before or after the other arguments.
+
+`quickproxy get routes [PATTERN...]` shows the routes in a table, sorted by pattern. If you give patterns, it shows only those routes. Flags:
+
+- `-o table`: a table with the columns `PATTERN` and `TARGET`. This is the default.
+- `-o json`: a JSON object that maps each pattern to its target.
+- `-o name`: one line per route, for example `route/abc`.
+- `--no-headers`: do not print the table header.
+
+`quickproxy create route PATTERN TARGET` adds a route. If the file does not exist, the command creates it. If the pattern exists, the command fails. To replace the target of an existing pattern, add `--overwrite`.
+
+`quickproxy delete route PATTERN...` removes one or more routes. If a pattern does not exist, the command fails and changes nothing. To skip missing patterns, add `--ignore-not-found`.
+
+Before `create` or `delete` saves the file, it compiles all the routes with the rules in "Route file". If a route is not valid, the command prints the error and does not change the file. The command writes a temporary file and renames it over the route file, so that the server never reads a partial file. It also locks `routes.json.lock` next to the route file. Two commands that run at the same time therefore do not lose a change.
+
+The commands rewrite the whole file as indented JSON with the routes sorted by pattern. `listen` does not change.
+
+Exit codes:
+
+- 0: the command succeeded.
+- 1: a route was not found, already exists, or is not valid, or the file cannot be read or written.
+- 2: the command line is not correct.
 
 ## Release
 
@@ -64,6 +98,8 @@ The release workflow builds binaries for Linux and macOS, on amd64 and arm64. It
 If you do not give `-config`, quickproxy uses `$XDG_CONFIG_HOME/quickproxy/routes.json`. If `XDG_CONFIG_HOME` is not set or is not an absolute path, quickproxy uses `~/.config/quickproxy/routes.json`. The rule is the same on macOS and Linux.
 
 If the directory does not exist, quickproxy creates it. If the default file does not exist, quickproxy starts with no routes. It logs the path that it expects, and `/` and `/_health` work. When you create the file, quickproxy loads it within 2 seconds.
+
+The `get`, `create` and `delete` subcommands use the same file. `create` creates the file if it does not exist.
 
 If you give `-config` and the file does not exist, quickproxy exits with an error. quickproxy does not read `./routes.json` automatically. To use it, run `./quickproxy -config routes.json`.
 
@@ -96,6 +132,8 @@ Rules for keys:
 - A parameter is a whole segment. `/a/{x}` is correct. `/a/x{y}` is not.
 - `/` and `/_health` are reserved.
 - Two keys with the same shape, such as `/a/{x}` and `/a/{y}`, are an error.
+
+The `routes` object can be empty. Then quickproxy serves only `/` and `/_health`.
 
 If more than one key matches, the key with more segments wins. If two keys have the same number of segments, a literal segment wins over a parameter. For example, `/in/special/path` wins over `/in/{val}/path`.
 

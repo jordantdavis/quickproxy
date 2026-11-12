@@ -18,13 +18,23 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "update" {
-		os.Exit(runUpdate(os.Args[2:], os.Stdout, os.Stderr))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "update":
+			os.Exit(runUpdate(os.Args[2:], os.Stdout, os.Stderr))
+		case "get", "create", "delete":
+			os.Exit(runCtl(os.Args[1], os.Args[2:], os.Stdout, os.Stderr))
+		}
 	}
 
 	configPath := flag.String("config", "", "path to the JSON route file (default $XDG_CONFIG_HOME/quickproxy/routes.json or ~/.config/quickproxy/routes.json)")
 	listen := flag.String("listen", "", "listen address (overrides \"listen\" in the file; default 127.0.0.1:8080)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: quickproxy [-config PATH] [-listen ADDR] [-version]\n\nflags:\n")
+		flag.PrintDefaults()
+		fmt.Fprint(flag.CommandLine.Output(), "\nsubcommands:\n  quickproxy update [-check] [-version vX.Y.Z] [-force]\n", ctlCommands)
+	}
 	flag.Parse()
 
 	if *showVersion {
@@ -36,14 +46,13 @@ func main() {
 
 	// Without -config, the default file is optional: if it is missing, start
 	// with no routes and let watchConfig load it when it appears.
-	optional := false
-	if *configPath == "" {
-		p, err := defaultConfigPath(os.Getenv, os.UserHomeDir)
-		if err != nil {
-			log.Error("load config", "err", err)
-			os.Exit(1)
-		}
-		*configPath, optional = p, true
+	p, optional, err := resolveConfigPath(*configPath)
+	if err != nil {
+		log.Error("load config", "err", err)
+		os.Exit(1)
+	}
+	*configPath = p
+	if optional {
 		// Create the directory, so that the user only has to add the file.
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			log.Warn("create config directory", "err", err)

@@ -13,7 +13,7 @@ import (
 
 // Config is the JSON configuration file.
 type Config struct {
-	Listen string            `json:"listen"`
+	Listen string            `json:"listen,omitempty"`
 	Routes map[string]string `json:"routes"`
 }
 
@@ -44,7 +44,8 @@ func LoadConfig(path string) (*Config, *Table, error) {
 	if err := dec.Decode(&cfg); err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if len(cfg.Routes) == 0 {
+	// An empty map is valid: "quickproxy delete" can remove the last route.
+	if cfg.Routes == nil {
 		return nil, nil, errors.New(path + `: no "routes"`)
 	}
 	t, err := NewTable(cfg.Routes)
