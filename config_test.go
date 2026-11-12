@@ -25,7 +25,12 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatalf("good config: %v %v", cfg, err)
 	}
 
-	for _, bad := range []string{`{`, `{"routes":{}}`, `{"route":{"/a":"http://h"}}`, `{"routes":{"a":"http://h"}}`} {
+	write(`{"routes":{}}`)
+	if _, tb, err := LoadConfig(p); err != nil || len(tb.Routes()) != 0 {
+		t.Errorf("empty routes: got %v, want an empty table", err)
+	}
+
+	for _, bad := range []string{`{`, `{}`, `{"routes":null}`, `{"route":{"/a":"http://h"}}`, `{"routes":{"a":"http://h"}}`} {
 		write(bad)
 		if _, _, err := LoadConfig(p); err == nil {
 			t.Errorf("%s: want error", bad)
