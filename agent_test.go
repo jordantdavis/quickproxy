@@ -42,6 +42,10 @@ func TestPrimePrintsGuide(t *testing.T) {
 			t.Errorf("prime output has no %q:\n%s", want, out)
 		}
 	}
+	// The guide describes the command form itself and names no other tool.
+	if strings.Contains(strings.ToLower(out), "kubectl") {
+		t.Errorf("prime output mentions kubectl:\n%s", out)
+	}
 }
 
 func TestPrimeRejectsArgs(t *testing.T) {

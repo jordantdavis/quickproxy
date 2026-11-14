@@ -21,8 +21,9 @@ quickproxy is a reverse proxy on one loopback port, by default 127.0.0.1:8080.
 It sits behind "tailscale serve 8080". It sends each request to a local app by
 path prefix. For example, /grafana/d/abc goes to http://127.0.0.1:3000/d/abc.
 
-Route commands follow kubectl: quickproxy VERB routes [PATTERN...] [flags].
-The resource can be routes, route or rt.
+Route commands have the form quickproxy VERB RESOURCE [PATTERN...] [flags].
+The verb is get, create or delete. The resource can be routes, route or rt.
+Flags can come before or after the patterns.
 
 ## Read routes
 
