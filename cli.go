@@ -73,8 +73,9 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "quickproxy",
 		Short: "Send each request on one local port to a local app by path prefix",
-		Long: `quickproxy listens on one loopback port, for example behind
-"tailscale serve 8080", and sends each request to a local app by path prefix.
+		Long: `quickproxy listens on one loopback port and sends each request to a
+local app by path prefix. To reach the port from other machines, put a
+separate tool in front of it, for example "tailscale serve 8080".
 
 Without a subcommand, quickproxy runs the proxy server.`,
 		SilenceErrors: true,
@@ -99,6 +100,8 @@ Without a subcommand, quickproxy runs the proxy server.`,
 		newGetCmd(stdout, stderr),
 		newCreateCmd(stdout),
 		newDeleteCmd(stdout),
+		newPrimeCmd(stdout),
+		newInitCmd(stdout),
 	)
 	return root
 }

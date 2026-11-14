@@ -1,6 +1,6 @@
 # quickproxy
 
-quickproxy listens on one local port and sends each request to a different local app, by path prefix. It is made to sit behind `tailscale serve 8080`. It uses the Go standard library and Cobra for the command line.
+quickproxy listens on one local port and sends each request to a different local app, by path prefix. quickproxy serves only on loopback. To reach it from other machines, you put a separate tool in front of it, for example `tailscale serve 8080`. It uses the Go standard library and Cobra for the command line.
 
 ## Install
 
@@ -43,7 +43,7 @@ Release v0.1.0 and earlier releases do not have this command. If you have one of
 2. Run `go build -o quickproxy .`
 3. Run `./quickproxy`. It creates `~/.config/quickproxy/` and starts with no routes.
 4. Add a route with `./quickproxy create route /grafana http://127.0.0.1:3000`. You can also copy `routes.example.json` to `~/.config/quickproxy/routes.json` and edit it. quickproxy loads the file within 2 seconds.
-5. On the same machine, run `tailscale serve 8080`.
+5. Optional: to reach the proxy from other machines, put a front proxy in front of the port. For example, on the same machine, run `tailscale serve 8080`.
 
 Flags:
 
@@ -98,6 +98,23 @@ Exit codes:
 - 0: the command succeeded.
 - 1: a route was not found, already exists, or is not valid, or the file cannot be read or written.
 - 2: the command line is not correct.
+
+## Use quickproxy with an AI agent
+
+> [!NOTE]
+> At this time, `quickproxy init` sets up only Claude Code. It does not support other AI agents. To use another agent, run `quickproxy prime` and give the output to the agent.
+
+Run this command in the project directory where you work with Claude Code:
+
+```sh
+quickproxy init
+```
+
+The command adds a SessionStart hook to `.claude/settings.local.json`. That file is personal and is not committed. At the start of each session, the hook runs `quickproxy prime`. That command prints a guide that tells the agent how to read and change routes, and which changes to ask you about first. The hook also runs after a resume, a clear, and a compaction.
+
+To write the hook to `.claude/settings.json`, the file that teams commit, use `quickproxy init --shared`. A second run changes nothing. The command keeps the rest of your configuration, but it can change the order of the keys.
+
+`quickproxy init` never writes your user-level Claude Code configuration. If you run it in your home directory, it fails. If the file is not valid JSON, the command fails and changes nothing. The hook runs `quickproxy prime` by name, so `quickproxy` must be on your PATH. To read the guide yourself, run `quickproxy prime`.
 
 ## Release
 
@@ -162,7 +179,7 @@ If more than one key matches, the key with more segments wins. If two keys have 
 
 Some apps build absolute links such as `/static/app.js`. These links skip the prefix and fail. If this occurs, set the base path or root URL in the app to its prefix.
 
-quickproxy keeps the `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` headers that it receives. This is correct behind `tailscale serve`. Do not expose the port on a public network interface, because clients can then forge these headers.
+quickproxy keeps the `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` headers that it receives. This is correct behind a local front proxy that sets them, such as `tailscale serve`. Do not expose the port on a public network interface, because clients can then forge these headers.
 
 ## Reload
 

@@ -94,8 +94,8 @@ func rewrite(pr *httputil.ProxyRequest) {
 	pr.Out.URL.RawPath = raw
 	pr.Out.Host = "" // send the backend's own host
 
-	// This proxy listens on loopback behind `tailscale serve`, so the inbound
-	// forwarding headers come from Tailscale and are kept.
+	// This proxy listens on loopback, so the inbound forwarding headers come
+	// from a local front proxy, such as `tailscale serve`, and are kept.
 	if xff := pr.In.Header.Values("X-Forwarded-For"); len(xff) > 0 {
 		pr.Out.Header["X-Forwarded-For"] = xff
 	}

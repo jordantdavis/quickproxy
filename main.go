@@ -1,4 +1,4 @@
-// Command quickproxy listens on one local port (for `tailscale serve`) and
+// Command quickproxy listens on one local port and
 // reverse-proxies each path prefix to a different local app.
 package main
 
