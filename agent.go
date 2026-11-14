@@ -18,8 +18,9 @@ const primeCommand = "quickproxy prime"
 const primeGuide = `# quickproxy: one local port, many apps by path prefix
 
 quickproxy is a reverse proxy on one loopback port, by default 127.0.0.1:8080.
-It sits behind "tailscale serve 8080". It sends each request to a local app by
-path prefix. For example, /grafana/d/abc goes to http://127.0.0.1:3000/d/abc.
+It sends each request to a local app by path prefix. For example, /grafana/d/abc
+goes to http://127.0.0.1:3000/d/abc. quickproxy does not expose the port to
+other machines. That is a separate step that the user controls.
 
 Route commands have the form quickproxy VERB RESOURCE [PATTERN...] [flags].
 The verb is get, create or delete. The resource can be routes, route or rt.

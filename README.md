@@ -1,6 +1,6 @@
 # quickproxy
 
-quickproxy listens on one local port and sends each request to a different local app, by path prefix. It is made to sit behind `tailscale serve 8080`. It uses the Go standard library and Cobra for the command line.
+quickproxy listens on one local port and sends each request to a different local app, by path prefix. quickproxy serves only on loopback. To reach it from other machines, you put a separate tool in front of it, for example `tailscale serve 8080`. It uses the Go standard library and Cobra for the command line.
 
 ## Install
 
@@ -43,7 +43,7 @@ Release v0.1.0 and earlier releases do not have this command. If you have one of
 2. Run `go build -o quickproxy .`
 3. Run `./quickproxy`. It creates `~/.config/quickproxy/` and starts with no routes.
 4. Add a route with `./quickproxy create route /grafana http://127.0.0.1:3000`. You can also copy `routes.example.json` to `~/.config/quickproxy/routes.json` and edit it. quickproxy loads the file within 2 seconds.
-5. On the same machine, run `tailscale serve 8080`.
+5. Optional: to reach the proxy from other machines, put a front proxy in front of the port. For example, on the same machine, run `tailscale serve 8080`.
 
 Flags:
 
@@ -179,7 +179,7 @@ If more than one key matches, the key with more segments wins. If two keys have 
 
 Some apps build absolute links such as `/static/app.js`. These links skip the prefix and fail. If this occurs, set the base path or root URL in the app to its prefix.
 
-quickproxy keeps the `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` headers that it receives. This is correct behind `tailscale serve`. Do not expose the port on a public network interface, because clients can then forge these headers.
+quickproxy keeps the `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` headers that it receives. This is correct behind a local front proxy that sets them, such as `tailscale serve`. Do not expose the port on a public network interface, because clients can then forge these headers.
 
 ## Reload
 
