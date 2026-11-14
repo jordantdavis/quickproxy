@@ -99,6 +99,23 @@ Exit codes:
 - 1: a route was not found, already exists, or is not valid, or the file cannot be read or written.
 - 2: the command line is not correct.
 
+## Use quickproxy with an AI agent
+
+> [!NOTE]
+> At this time, `quickproxy init` sets up only Claude Code. It does not support other AI agents. To use another agent, run `quickproxy prime` and give the output to the agent.
+
+Run this command in the project directory where you work with Claude Code:
+
+```sh
+quickproxy init
+```
+
+The command adds a SessionStart hook to `.claude/settings.local.json`. That file is personal and is not committed. At the start of each session, the hook runs `quickproxy prime`. That command prints a guide that tells the agent how to read and change routes, and which changes to ask you about first. The hook also runs after a resume, a clear, and a compaction.
+
+To write the hook to `.claude/settings.json`, the file that teams commit, use `quickproxy init --shared`. A second run changes nothing. The command keeps the rest of your configuration, but it can change the order of the keys.
+
+`quickproxy init` never writes your user-level Claude Code configuration. If you run it in your home directory, it fails. If the file is not valid JSON, the command fails and changes nothing. The hook runs `quickproxy prime` by name, so `quickproxy` must be on your PATH. To read the guide yourself, run `quickproxy prime`.
+
 ## Release
 
 The release workflow builds binaries for Linux and macOS, on amd64 and arm64. It runs when you push a tag that starts with `v`.

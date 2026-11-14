@@ -99,6 +99,8 @@ Without a subcommand, quickproxy runs the proxy server.`,
 		newGetCmd(stdout, stderr),
 		newCreateCmd(stdout),
 		newDeleteCmd(stdout),
+		newPrimeCmd(stdout),
+		newInitCmd(stdout),
 	)
 	return root
 }
