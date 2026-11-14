@@ -5,8 +5,7 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -18,61 +17,44 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "update":
-			os.Exit(runUpdate(os.Args[2:], os.Stdout, os.Stderr))
-		case "get", "create", "delete":
-			os.Exit(runCtl(os.Args[1], os.Args[2:], os.Stdout, os.Stderr))
-		}
-	}
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
 
-	configPath := flag.String("config", "", "path to the JSON route file (default $XDG_CONFIG_HOME/quickproxy/routes.json or ~/.config/quickproxy/routes.json)")
-	listen := flag.String("listen", "", "listen address (overrides \"listen\" in the file; default 127.0.0.1:8080)")
-	showVersion := flag.Bool("version", false, "print the version and exit")
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: quickproxy [-config PATH] [-listen ADDR] [-version]\n\nflags:\n")
-		flag.PrintDefaults()
-		fmt.Fprint(flag.CommandLine.Output(), "\nsubcommands:\n  quickproxy update [-check] [-version vX.Y.Z] [-force]\n", ctlCommands)
-	}
-	flag.Parse()
+// serve runs the proxy server until SIGINT or SIGTERM. It logs its own
+// errors, so the error that it returns has no message.
+func serve(configPath, listen string, stderr io.Writer) error {
+	fail := &exitError{code: 1}
+	log := slog.New(slog.NewTextHandler(stderr, nil))
 
-	if *showVersion {
-		fmt.Println(versionString())
-		return
-	}
-
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-
-	// Without -config, the default file is optional: if it is missing, start
+	// Without --config, the default file is optional: if it is missing, start
 	// with no routes and let watchConfig load it when it appears.
-	p, optional, err := resolveConfigPath(*configPath)
+	p, optional, err := resolveConfigPath(configPath)
 	if err != nil {
 		log.Error("load config", "err", err)
-		os.Exit(1)
+		return fail
 	}
-	*configPath = p
+	configPath = p
 	if optional {
 		// Create the directory, so that the user only has to add the file.
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			log.Warn("create config directory", "err", err)
 		}
 	}
-	log.Info("config", "path", *configPath)
+	log.Info("config", "path", configPath)
 
-	cfg, table, err := LoadConfig(*configPath)
+	cfg, table, err := LoadConfig(configPath)
 	switch {
 	case optional && errors.Is(err, fs.ErrNotExist):
-		log.Warn("no route file; starting with no routes", "path", *configPath)
+		log.Warn("no route file; starting with no routes", "path", configPath)
 		cfg = &Config{}
 		table, _ = NewTable(nil)
 	case err != nil:
 		log.Error("load config", "err", err)
-		os.Exit(1)
+		return fail
 	}
 	addr := cfg.Listen
-	if *listen != "" {
-		addr = *listen
+	if listen != "" {
+		addr = listen
 	}
 	if addr == "" {
 		addr = "127.0.0.1:8080"
@@ -84,8 +66,8 @@ func main() {
 
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
-	go watchConfig(ctx, *configPath, 2*time.Second, hup, func() {
-		newCfg, t, err := LoadConfig(*configPath)
+	go watchConfig(ctx, configPath, 2*time.Second, hup, func() {
+		newCfg, t, err := LoadConfig(configPath)
 		if err != nil {
 			log.Error("reload failed; keeping old routes", "err", err)
 			return
@@ -113,7 +95,8 @@ func main() {
 	log.Info("listening", "addr", addr, "version", versionString())
 	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("serve", "err", err)
-		os.Exit(1)
+		return fail
 	}
 	<-done
+	return nil
 }
