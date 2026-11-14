@@ -15,7 +15,7 @@ import (
 func ctl(t *testing.T, path string, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	code = runCtl(args[0], append(args[1:], "-config", path), &out, &errb)
+	code = run(append(args, "--config", path), &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -144,6 +144,14 @@ func TestCtlGet(t *testing.T) {
 	if _, out, _ := ctl(t, p, "get", "routes", "-o", "name"); out != "route/a\nroute/grafana\n" {
 		t.Errorf("name: got %q", out)
 	}
+	// Flags can also come before the resource name.
+	if _, out, _ := ctl(t, p, "get", "--no-headers", "--output", "name", "rt"); out != "route/a\nroute/grafana\n" {
+		t.Errorf("flags first: got %q", out)
+	}
+	// The single-dash form of older releases still works.
+	if _, out, _ := ctl(t, p, "get", "routes", "-no-headers"); strings.Contains(out, "PATTERN") {
+		t.Errorf("-no-headers: got\n%s", out)
+	}
 	_, out, _ := ctl(t, p, "get", "route", "/a", "-o=json")
 	var m map[string]string
 	if err := json.Unmarshal([]byte(out), &m); err != nil || len(m) != 1 || m["/a"] != "http://h:1" {
@@ -166,6 +174,7 @@ func TestCtlUsageErrors(t *testing.T) {
 		{"delete", "route"},
 		{"get", "routes", "--bogus"},
 		{"apply", "route", "/a", "http://h"},
+		{"create", "route", "/a", "http://h", "extra"},
 	} {
 		if code, _, _ := ctl(t, p, args...); code != 2 {
 			t.Errorf("%v: code %d, want 2", args, code)
@@ -185,7 +194,7 @@ func TestCtlCreateConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			var out, errb bytes.Buffer
-			if code := runCtl("create", []string{"route", fmt.Sprintf("/r%d", i), "http://h", "-config", p}, &out, &errb); code != 0 {
+			if code := run([]string{"create", "route", fmt.Sprintf("/r%d", i), "http://h", "--config", p}, &out, &errb); code != 0 {
 				t.Errorf("create %d: %s", i, errb.String())
 			}
 		}()

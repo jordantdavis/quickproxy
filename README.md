@@ -1,6 +1,6 @@
 # quickproxy
 
-quickproxy listens on one local port and sends each request to a different local app, by path prefix. It is made to sit behind `tailscale serve 8080`. It uses only the Go standard library.
+quickproxy listens on one local port and sends each request to a different local app, by path prefix. It is made to sit behind `tailscale serve 8080`. It uses the Go standard library and Cobra for the command line.
 
 ## Install
 
@@ -31,9 +31,9 @@ A running server continues to use the old version. After the update, restart qui
 
 Flags for `update`:
 
-- `-check`: print the current and the latest version, and do not change a file. The exit code is 0 if you have the latest version, and 1 if a newer release exists.
-- `-version`: install this release tag, for example `v1.0.0`. You can use it to go back to an older release.
-- `-force`: install the release even if you already have that version. You must use `-force` or `-version` to replace a binary that you built from source, because its version is `dev`.
+- `--check`: print the current and the latest version, and do not change a file. The exit code is 0 if you have the latest version, and 1 if a newer release exists.
+- `--version`: install this release tag, for example `v1.0.0`. You can use it to go back to an older release.
+- `--force`: install the release even if you already have that version. You must use `--force` or `--version` to replace a binary that you built from source, because its version is `dev`.
 
 Release v0.1.0 and earlier releases do not have this command. If you have one of those releases, run the install script again to get a release with `update`.
 
@@ -47,9 +47,23 @@ Release v0.1.0 and earlier releases do not have this command. If you have one of
 
 Flags:
 
-- `-config`: the path to the route file. The default is in your home directory. See "Route file location".
-- `-listen`: the listen address. This overrides `listen` in the file. The default is `127.0.0.1:8080`.
-- `-version`: print the version and exit.
+- `--config`: the path to the route file. The default is in your home directory. See "Route file location".
+- `--listen`: the listen address. This overrides `listen` in the file. The default is `127.0.0.1:8080`.
+- `--version`: print the version and exit.
+
+Long flags use two dashes. Release v0.3.0 and earlier releases used one dash, for example `-config`. quickproxy still accepts the one-dash form of a long flag, so that old scripts continue to work.
+
+To see the help for a command, add `--help`, for example `quickproxy get --help`.
+
+## Shell completion
+
+The `completion` subcommand prints a completion script for bash, zsh, fish or PowerShell. For example, to load completion in the current zsh session, run:
+
+```sh
+source <(quickproxy completion zsh)
+```
+
+For the steps to load it in each new shell, run `quickproxy completion zsh --help`.
 
 ## Manage routes from the command line
 
@@ -62,11 +76,11 @@ quickproxy create route /abc http://127.0.0.1:3002 --overwrite
 quickproxy delete route /abc
 ```
 
-The resource type can be `routes`, `route` or `rt`. The commands use the same file as the server. To use a different file, add `-config PATH`. You can put flags before or after the other arguments.
+The resource type can be `routes`, `route` or `rt`. The commands use the same file as the server. To use a different file, add `--config PATH`. You can put flags before or after the other arguments.
 
 `quickproxy get routes [PATTERN...]` shows the routes in a table, sorted by pattern. If you give patterns, it shows only those routes. Flags:
 
-- `-o table`: a table with the columns `PATTERN` and `TARGET`. This is the default.
+- `-o table` or `--output table`: a table with the columns `PATTERN` and `TARGET`. This is the default.
 - `-o json`: a JSON object that maps each pattern to its target.
 - `-o name`: one line per route, for example `route/abc`.
 - `--no-headers`: do not print the table header.
@@ -95,13 +109,13 @@ The release workflow builds binaries for Linux and macOS, on amd64 and arm64. It
 
 ## Route file location
 
-If you do not give `-config`, quickproxy uses `$XDG_CONFIG_HOME/quickproxy/routes.json`. If `XDG_CONFIG_HOME` is not set or is not an absolute path, quickproxy uses `~/.config/quickproxy/routes.json`. The rule is the same on macOS and Linux.
+If you do not give `--config`, quickproxy uses `$XDG_CONFIG_HOME/quickproxy/routes.json`. If `XDG_CONFIG_HOME` is not set or is not an absolute path, quickproxy uses `~/.config/quickproxy/routes.json`. The rule is the same on macOS and Linux.
 
 If the directory does not exist, quickproxy creates it. If the default file does not exist, quickproxy starts with no routes. It logs the path that it expects, and `/` and `/_health` work. When you create the file, quickproxy loads it within 2 seconds.
 
 The `get`, `create` and `delete` subcommands use the same file. `create` creates the file if it does not exist.
 
-If you give `-config` and the file does not exist, quickproxy exits with an error. quickproxy does not read `./routes.json` automatically. To use it, run `./quickproxy -config routes.json`.
+If you give `--config` and the file does not exist, quickproxy exits with an error. quickproxy does not read `./routes.json` automatically. To use it, run `./quickproxy --config routes.json`.
 
 ## Route file
 

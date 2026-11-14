@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,127 +13,116 @@ import (
 	"strings"
 	"syscall"
 	"text/tabwriter"
-)
 
-// errUsage marks a command-line mistake. runCtl exits 2 for it, and 1 for
-// other errors.
-var errUsage = errors.New("usage error")
+	"github.com/spf13/cobra"
+)
 
 // errNoChange tells modifyConfig that the change did nothing, so that it does
 // not write the file.
 var errNoChange = errors.New("no change")
 
-// routeResources are the names of the route resource, as in kubectl:
-// plural, singular and short name.
-var routeResources = map[string]bool{"routes": true, "route": true, "rt": true}
+// routeAliases are the other names of the "routes" resource, as in kubectl:
+// singular and short name.
+var routeAliases = []string{"route", "rt"}
 
-// ctlCommands lists the route subcommands. main also prints it in -h.
-const ctlCommands = `  quickproxy get routes [PATTERN...] [-o table|json|name] [--no-headers] [-config PATH]
-  quickproxy create route PATTERN TARGET [--overwrite] [-config PATH]
-  quickproxy delete route PATTERN... [--ignore-not-found] [-config PATH]
+// newVerbCmd returns a kubectl-style verb, such as "get", with the routes
+// resource as its only subcommand. The verb holds the flags as persistent
+// flags, so that they can come before or after the resource name.
+func newVerbCmd(verb, short string, routes *cobra.Command) (*cobra.Command, *string) {
+	configPath := new(string)
+	cmd := &cobra.Command{
+		Use:   verb + " RESOURCE",
+		Short: short,
+		Long: short + `.
 
-Resource names: routes, route, rt.
-`
-
-const ctlUsage = "usage:\n" + ctlCommands
-
-// runCtl runs the "get", "create" and "delete" subcommands, which read and
-// change the route file. It returns the process exit code: 0 on success,
-// 1 on an error, 2 on a usage error.
-func runCtl(verb string, args []string, stdout, stderr io.Writer) int {
-	fset := flag.NewFlagSet(verb, flag.ContinueOnError)
-	fset.SetOutput(stderr)
-	fset.Usage = func() {
-		fmt.Fprint(stderr, ctlUsage, "\nflags for ", verb, ":\n")
-		fset.PrintDefaults()
+The resource type can be routes, route or rt.`,
+		// A verb without a known resource is a usage error.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return usageError("you must give a resource type, for example: quickproxy %s routes", verb)
+			}
+			return usageError("unknown resource type %q (known types: routes, route, rt)", args[0])
+		},
 	}
-	configFlag := fset.String("config", "", "path to the JSON route file (default $XDG_CONFIG_HOME/quickproxy/routes.json or ~/.config/quickproxy/routes.json)")
+	cmd.PersistentFlags().StringVar(configPath, "config", "", configFlagUsage)
+	routes.Aliases = routeAliases
+	cmd.AddCommand(routes)
+	return cmd, configPath
+}
 
-	var run func(path string, names []string) error
-	switch verb {
-	case "get":
-		output := fset.String("o", "table", "output format: table, json or name")
-		noHeaders := fset.Bool("no-headers", false, "do not print the table header")
-		run = func(path string, names []string) error {
-			return ctlGet(path, names, *output, *noHeaders, stdout, stderr)
-		}
-	case "create":
-		overwrite := fset.Bool("overwrite", false, "replace the target if the route exists")
-		run = func(path string, args []string) error {
+func newGetCmd(stdout, stderr io.Writer) *cobra.Command {
+	var output string
+	var noHeaders bool
+	var configPath *string
+	routes := &cobra.Command{
+		Use:   "routes [PATTERN...]",
+		Short: "Show all routes, or only the routes with the given patterns",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, _, err := resolveConfigPath(*configPath)
+			if err != nil {
+				return err
+			}
+			return ctlGet(path, args, output, noHeaders, stdout, stderr)
+		},
+	}
+	cmd, configPath := newVerbCmd("get", "Show routes from the route file", routes)
+	f := cmd.PersistentFlags()
+	f.StringVarP(&output, "output", "o", "table", "output format: table, json or name")
+	f.BoolVar(&noHeaders, "no-headers", false, "do not print the table header")
+	return cmd
+}
+
+func newCreateCmd(stdout io.Writer) *cobra.Command {
+	var overwrite bool
+	var configPath *string
+	routes := &cobra.Command{
+		Use:   "routes PATTERN TARGET",
+		Short: "Add a route to the route file",
+		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
-				return fmt.Errorf("%w: create route needs PATTERN and TARGET", errUsage)
+				return usageError("create route needs PATTERN and TARGET")
 			}
-			return ctlCreate(path, args[0], args[1], *overwrite, stdout)
-		}
-	case "delete":
-		ignore := fset.Bool("ignore-not-found", false, "do not fail if a route does not exist")
-		run = func(path string, names []string) error {
-			if len(names) == 0 {
-				return fmt.Errorf("%w: delete route needs at least one PATTERN", errUsage)
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, _, err := resolveConfigPath(*configPath)
+			if err != nil {
+				return err
 			}
-			return ctlDelete(path, names, *ignore, stdout)
-		}
-	default:
-		fmt.Fprintf(stderr, "error: unknown command %q\n%s", verb, ctlUsage)
-		return 2
+			return ctlCreate(path, args[0], args[1], overwrite, stdout)
+		},
 	}
-
-	pos, err := parseInterleaved(fset, args)
-	if errors.Is(err, flag.ErrHelp) {
-		return 0
-	}
-	if err != nil {
-		return 2
-	}
-	if len(pos) == 0 {
-		fmt.Fprintf(stderr, "error: you must give a resource type, for example: quickproxy %s routes\n", verb)
-		return 2
-	}
-	if !routeResources[pos[0]] {
-		fmt.Fprintf(stderr, "error: unknown resource type %q (known types: routes, route, rt)\n", pos[0])
-		return 2
-	}
-	path, _, err := resolveConfigPath(*configFlag)
-	if err == nil {
-		err = run(path, pos[1:])
-	}
-	switch {
-	case errors.Is(err, errUsage):
-		fmt.Fprintf(stderr, "error: %s\n%s", strings.TrimPrefix(err.Error(), errUsage.Error()+": "), ctlUsage)
-		return 2
-	case err != nil:
-		fmt.Fprintln(stderr, "error:", err)
-		return 1
-	}
-	return 0
+	cmd, configPath := newVerbCmd("create", "Add a route to the route file", routes)
+	cmd.PersistentFlags().BoolVar(&overwrite, "overwrite", false, "replace the target if the route exists")
+	return cmd
 }
 
-// parseInterleaved parses flags that come before, between or after the
-// positional arguments, as kubectl does, and returns the positionals.
-// Everything after "--" is positional.
-func parseInterleaved(fset *flag.FlagSet, args []string) ([]string, error) {
-	var tail []string
-	for i, a := range args {
-		if a == "--" {
-			args, tail = args[:i], args[i+1:]
-			break
-		}
+func newDeleteCmd(stdout io.Writer) *cobra.Command {
+	var ignoreNotFound bool
+	var configPath *string
+	routes := &cobra.Command{
+		Use:   "routes PATTERN...",
+		Short: "Remove routes from the route file",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return usageError("delete route needs at least one PATTERN")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path, _, err := resolveConfigPath(*configPath)
+			if err != nil {
+				return err
+			}
+			return ctlDelete(path, args, ignoreNotFound, stdout)
+		},
 	}
-	var pos []string
-	for {
-		if err := fset.Parse(args); err != nil {
-			return nil, err
-		}
-		args = fset.Args()
-		if len(args) == 0 {
-			return append(pos, tail...), nil
-		}
-		pos = append(pos, args[0])
-		args = args[1:]
-	}
+	cmd, configPath := newVerbCmd("delete", "Remove routes from the route file", routes)
+	cmd.PersistentFlags().BoolVar(&ignoreNotFound, "ignore-not-found", false, "do not fail if a route does not exist")
+	return cmd
 }
 
-// resolveConfigPath returns the -config value, or the default route file
+// resolveConfigPath returns the --config value, or the default route file
 // path when the value is empty. isDefault tells which one it returned.
 func resolveConfigPath(flagValue string) (path string, isDefault bool, err error) {
 	if flagValue != "" {
@@ -241,7 +229,7 @@ func resourceName(pattern string) string {
 
 func ctlGet(path string, names []string, output string, noHeaders bool, stdout, stderr io.Writer) error {
 	if output != "table" && output != "json" && output != "name" {
-		return fmt.Errorf("%w: unknown output format %q (use table, json or name)", errUsage, output)
+		return usageError("unknown output format %q (use table, json or name)", output)
 	}
 	cfg, err := readConfig(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

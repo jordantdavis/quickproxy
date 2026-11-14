@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -21,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 // releaseURL is the GitHub repository that install.sh and the release
@@ -42,48 +43,47 @@ type updater struct {
 	out     io.Writer
 }
 
-// runUpdate runs "quickproxy update". It returns the process exit code:
-// 0 on success, 1 when -check finds a newer release, 2 on an error.
-func runUpdate(args []string, stdout, stderr io.Writer) int {
-	fset := flag.NewFlagSet("update", flag.ContinueOnError)
-	fset.SetOutput(stderr)
-	tag := fset.String("version", "", "install this release tag, for example v1.0.0 (default: latest)")
-	check := fset.Bool("check", false, "print the current and latest versions and exit; exit code 1 means an update exists")
-	force := fset.Bool("force", false, "install even if the version is the same or this is a development build")
-	fset.Usage = func() {
-		fmt.Fprintln(stderr, "usage: quickproxy update [-check] [-version vX.Y.Z] [-force]")
-		fset.PrintDefaults()
-	}
-	if err := fset.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
-	}
-	if fset.NArg() > 0 {
-		fset.Usage()
-		return 2
-	}
+// newUpdateCmd returns "quickproxy update". Its exit code is 0 on success,
+// 1 when --check finds a newer release, and 2 on an error.
+func newUpdateCmd(stdout io.Writer) *cobra.Command {
+	var tag string
+	var check, force bool
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Replace this binary with the latest release from GitHub",
+		Long: `Replace this binary with the latest release from GitHub.
 
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Fprintln(stderr, "quickproxy update:", err)
-		return 2
+The command downloads the archive for this OS and CPU architecture, compares
+it to checksums.txt, runs the new binary with -version, and then renames it
+over the running executable. A running server keeps the old version until
+you restart it.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			exe, err := os.Executable()
+			if err != nil {
+				return &exitError{code: 2, err: err}
+			}
+			u := &updater{
+				client:  &http.Client{Timeout: 2 * time.Minute},
+				baseURL: releaseURL,
+				goos:    runtime.GOOS,
+				goarch:  runtime.GOARCH,
+				exe:     exe,
+				current: version,
+				out:     stdout,
+			}
+			code, err := u.run(cmd.Context(), tag, check, force)
+			if code == 0 && err == nil {
+				return nil
+			}
+			return &exitError{code: code, err: err}
+		},
 	}
-	u := &updater{
-		client:  &http.Client{Timeout: 2 * time.Minute},
-		baseURL: releaseURL,
-		goos:    runtime.GOOS,
-		goarch:  runtime.GOARCH,
-		exe:     exe,
-		current: version,
-		out:     stdout,
-	}
-	code, err := u.run(context.Background(), *tag, *check, *force)
-	if err != nil {
-		fmt.Fprintln(stderr, "quickproxy update:", err)
-	}
-	return code
+	f := cmd.Flags()
+	f.StringVar(&tag, "version", "", "install this release tag, for example v1.0.0 (default: latest)")
+	f.BoolVar(&check, "check", false, "print the current and latest versions and exit; exit code 1 means an update exists")
+	f.BoolVar(&force, "force", false, "install even if the version is the same or this is a development build")
+	return cmd
 }
 
 func (u *updater) run(ctx context.Context, tag string, check, force bool) (int, error) {
@@ -108,7 +108,7 @@ func (u *updater) run(ctx context.Context, tag string, check, force bool) (int, 
 
 	if !force && !explicit {
 		if u.current == "dev" {
-			return 2, errors.New("this is a development build; use -force or -version to replace it")
+			return 2, errors.New("this is a development build; use --force or --version to replace it")
 		}
 		newer, err := isNewer(tag, u.current)
 		if err != nil {
@@ -246,7 +246,8 @@ func extractBinary(archive []byte, name string) ([]byte, error) {
 }
 
 // replaceExecutable writes bin next to exe, runs it with -version to make
-// sure that it works and reports tag, and then renames it over exe. A
+// sure that it works and reports tag, and then renames it over exe. It uses
+// the single-dash form, because releases before Cobra accept only that form. A
 // running process keeps the old file open, so it is not affected. It
 // returns the path that it replaced.
 func replaceExecutable(exe string, bin []byte, tag string) (string, error) {
