@@ -46,6 +46,21 @@ quickproxy create route /in/{id}/path http://127.0.0.1:5000/api/{id}
 seconds, so a route change needs no restart. If a route is not valid, the
 command changes nothing and prints the error.
 
+## Share a file with the user
+
+A target can be one local file instead of a backend URL. Use this to show the
+user a document, such as an HTML plan, on a phone browser:
+
+1. Write the document into the project, for example ./plan.html.
+2. quickproxy create route /plan ./plan.html
+3. Tell the user the path /plan. They open it on the host that exposes port 8080.
+
+A local path must start with / or ./ (a bare name such as plan.html is an
+error). The command stores the absolute file:// URL. It fails if the path is
+not a file, or if the file is not inside the home directory. Do not write the
+file into /tmp. Directories are not served. The route serves the file at /plan.
+Responses are not cached, so edits show when the user reloads the page.
+
 ## Behavior to know
 
 - A request for the prefix without a trailing slash gets a 308 redirect to the
@@ -62,6 +77,8 @@ command changes nothing and prints the error.
   depend on the route.
 - Never make quickproxy listen on a public network interface. It trusts the
   X-Forwarded-* headers, so it is safe only on loopback.
+- Serve only a file that you wrote to show the user. Never serve a file that
+  holds secrets, such as .env, keys or credentials.
 - Edit routes with the commands, not by hand. The commands lock and validate
   the route file.
 

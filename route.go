@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -28,7 +29,8 @@ type tplPart struct {
 	param string
 }
 
-// Route maps a public path pattern to a backend URL.
+// Route maps a public path pattern to a backend URL, or to a local file when
+// the target is a file:// URL.
 type Route struct {
 	Pattern string
 	Target  string
@@ -37,6 +39,7 @@ type Route struct {
 	scheme string
 	host   string
 	tpl    []tplPart // backend base path template; empty means "/"
+	fsPath string    // local path of a file route; "" for a proxy route
 }
 
 // Match is the result of matching a request path against the table.
@@ -136,11 +139,14 @@ func compileRoute(pattern, target string) (*Route, error) {
 	}
 
 	u, err := url.Parse(target)
+	if err == nil && u.Scheme == "file" {
+		return compileFileRoute(pattern, target, segs, u)
+	}
 	switch {
 	case err != nil:
 		return nil, fmt.Errorf("route %q: bad target: %w", pattern, err)
 	case u.Scheme != "http" && u.Scheme != "https":
-		return nil, fmt.Errorf("route %q: target scheme must be http or https", pattern)
+		return nil, fmt.Errorf("route %q: target scheme must be http, https or file", pattern)
 	case u.Host == "":
 		return nil, fmt.Errorf("route %q: target has no host", pattern)
 	case u.RawQuery != "" || u.ForceQuery || u.Fragment != "":
@@ -152,6 +158,22 @@ func compileRoute(pattern, target string) (*Route, error) {
 		return nil, fmt.Errorf("route %q: %w", pattern, err)
 	}
 	return &Route{Pattern: pattern, Target: target, segs: segs, scheme: u.Scheme, host: u.Host, tpl: tpl}, nil
+}
+
+// compileFileRoute compiles a route whose target is a file:// URL. The URL
+// names a local file by an absolute path. The file does not have to exist yet.
+func compileFileRoute(pattern, target string, segs []segment, u *url.URL) (*Route, error) {
+	switch {
+	case u.Host != "" && u.Host != "localhost":
+		return nil, fmt.Errorf("route %q: a file target must not have a host other than localhost", pattern)
+	case u.RawQuery != "" || u.ForceQuery || u.Fragment != "":
+		return nil, fmt.Errorf("route %q: target must not have a query or fragment", pattern)
+	case !strings.HasPrefix(u.Path, "/"):
+		return nil, fmt.Errorf("route %q: a file target must have an absolute path, like file:///srv/docs", pattern)
+	case strings.ContainsAny(u.Path, "{}"):
+		return nil, fmt.Errorf("route %q: a file target cannot use parameters", pattern)
+	}
+	return &Route{Pattern: pattern, Target: target, segs: segs, scheme: "file", fsPath: filepath.Clean(u.Path)}, nil
 }
 
 func parsePattern(p string) ([]segment, error) {
