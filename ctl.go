@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -78,6 +79,13 @@ func newCreateCmd(stdout io.Writer) *cobra.Command {
 	routes := &cobra.Command{
 		Use:   "routes PATTERN TARGET",
 		Short: "Add a route to the route file",
+		Long: `Add a route to the route file.
+
+TARGET is an http or https URL of a backend, or a local file.
+Give a local target as a path that starts with / or ./, such as ./plan.html,
+or as a file:// URL. The command stores the absolute file:// URL. It fails if
+nothing exists at the path. The path must be a file, not a directory, inside
+your home directory.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return usageError("create route needs PATTERN and TARGET")
@@ -286,9 +294,81 @@ func ctlGet(path string, names []string, output string, noHeaders bool, stdout, 
 	return tw.Flush()
 }
 
+// normalizeTarget turns a local path, such as ./plan.html, into an absolute
+// file:// URL. A local path must start with /, ./ or ../, so that a backend
+// without a scheme, such as grafana or 127.0.0.1:3000, is an error and not a
+// file route. A file target must be a regular file inside the home
+// directory. It returns http and https targets unchanged.
+func normalizeTarget(target string) (string, error) {
+	u, err := url.Parse(target)
+	switch {
+	case isLocalPath(target):
+		abs, err := filepath.Abs(target)
+		if err != nil {
+			return "", err
+		}
+		u = &url.URL{Scheme: "file", Path: abs}
+		target = u.String()
+	case err != nil || u.Scheme == "":
+		return "", usageError("target %q: give a URL with http://, https:// or file://, or a local path that starts with / or ./", target)
+	case u.Scheme != "file":
+		return target, nil
+	}
+	if !strings.HasPrefix(u.Path, "/") {
+		return target, nil // NewTable reports the error
+	}
+	fi, err := os.Stat(u.Path)
+	switch {
+	case err != nil:
+		return "", fmt.Errorf("target %q: nothing exists at %s", target, u.Path)
+	case !fi.Mode().IsRegular():
+		return "", fmt.Errorf("target %q: %s is not a file (a file route serves one file, not a directory)", target, u.Path)
+	}
+	if err := requireUnderHome(u.Path); err != nil {
+		return "", fmt.Errorf("target %q: %w", target, err)
+	}
+	return target, nil
+}
+
+// isLocalPath reports whether a create target is written as a local path.
+func isLocalPath(target string) bool {
+	for _, p := range []string{"/", "./", "../"} {
+		if strings.HasPrefix(target, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// requireUnderHome fails unless path is inside the home directory. Symlinks
+// are resolved first, so a link inside home cannot point outside.
+func requireUnderHome(path string) error {
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("find home directory: %w", err)
+	}
+	if h, err := filepath.EvalSymlinks(home); err == nil {
+		home = h
+	}
+	rel, err := filepath.Rel(home, real)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return fmt.Errorf("quickproxy serves only files inside your home directory %s", home)
+	}
+	return nil
+}
+
 func ctlCreate(path, pattern, target string, overwrite bool, stdout io.Writer) error {
+	given := target
+	target, err := normalizeTarget(target)
+	if err != nil {
+		return err
+	}
 	verb := "created"
-	err := modifyConfig(path, func(cfg *Config) error {
+	err = modifyConfig(path, func(cfg *Config) error {
 		if _, exists := cfg.Routes[pattern]; exists {
 			if !overwrite {
 				return fmt.Errorf("route %q already exists (use --overwrite to replace it)", pattern)
@@ -300,6 +380,9 @@ func ctlCreate(path, pattern, target string, overwrite bool, stdout io.Writer) e
 	})
 	if err != nil {
 		return err
+	}
+	if target != given {
+		verb += " (" + target + ")"
 	}
 	fmt.Fprintln(stdout, resourceName(pattern), verb)
 	return nil

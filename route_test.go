@@ -76,6 +76,10 @@ func TestNewTableErrors(t *testing.T) {
 		"no host":         {"/a": "http:///x"},
 		"query in target": {"/a": "http://h/?q=1"},
 		"health":          {"/_health": "http://h"},
+		"file relative":   {"/a": "file:docs"},
+		"file host":       {"/a": "file://h/srv"},
+		"file query":      {"/a": "file:///srv?x=1"},
+		"file param":      {"/a/{x}": "file:///srv/{x}"},
 	}
 	for name, m := range bad {
 		if _, err := NewTable(m); err == nil {
@@ -121,5 +125,19 @@ func TestOrderIsDeterministic(t *testing.T) {
 	}
 	if s := strings.Join(got, " "); s != "/a/b /a /b /{x}" {
 		t.Errorf("order: %s", s)
+	}
+}
+
+func TestFileRoute(t *testing.T) {
+	tb := mustTable(t, map[string]string{
+		"/plan":     "file:///srv/x/plan.html",
+		"/docs":     "file://localhost/srv/docs/",
+		"/u/{id}/d": "file:///srv/a%20b",
+	})
+	for path, want := range map[string]string{"/plan": "/srv/x/plan.html", "/docs/a": "/srv/docs", "/u/1/d/": "/srv/a b"} {
+		m, ok := tb.Match(path)
+		if !ok || m.Route.fsPath != want {
+			t.Errorf("%s: got %+v, want fsPath %q", path, m, want)
+		}
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -141,5 +143,41 @@ func TestSetTable(t *testing.T) {
 	}
 	if resp, _ := get(t, front.URL+"/new/"); resp.StatusCode != 200 {
 		t.Errorf("new route: %d", resp.StatusCode)
+	}
+}
+
+func TestFileRoutes(t *testing.T) {
+	dir := t.TempDir()
+	plan := filepath.Join(dir, "plan.html")
+	if err := os.WriteFile(plan, []byte("<h1>plan</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, front := newTestProxy(t, map[string]string{
+		"/plan":    "file://" + plan,
+		"/dir":     "file://" + dir,
+		"/missing": "file://" + filepath.Join(dir, "nope.html"),
+	})
+
+	resp, body := get(t, front.URL+"/plan")
+	if resp.StatusCode != 200 || body != "<h1>plan</h1>" || resp.Header.Get("Cache-Control") != "no-cache" ||
+		!strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		t.Errorf("file: %d %q %v", resp.StatusCode, body, resp.Header)
+	}
+
+	// Only the file itself is served: no paths below it, no directories.
+	for _, path := range []string{"/plan/", "/plan/x", "/dir", "/dir/", "/dir/plan.html", "/missing"} {
+		if resp, body := get(t, front.URL+path); resp.StatusCode != 404 || strings.Contains(body, "plan") {
+			t.Errorf("%s: status %d, body %q, want 404", path, resp.StatusCode, body)
+		}
+	}
+
+	req, _ := http.NewRequest("POST", front.URL+"/plan", nil)
+	if resp, err := noRedirect().Do(req); err != nil || resp.StatusCode != 405 || resp.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("POST: %v %v", resp, err)
+	}
+
+	_, body = get(t, front.URL+"/")
+	if !strings.Contains(body, `href="/plan"`) {
+		t.Errorf("index links: %s", body)
 	}
 }

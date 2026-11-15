@@ -1,6 +1,6 @@
 # quickproxy
 
-quickproxy listens on one local port and sends each request to a different local app, by path prefix. quickproxy serves only on loopback. To reach it from other machines, you put a separate tool in front of it, for example `tailscale serve 8080`. It uses the Go standard library and Cobra for the command line.
+quickproxy listens on one local port and sends each request to a different local app, by path prefix. A route can also serve one local file. quickproxy serves only on loopback. To reach it from other machines, you put a separate tool in front of it, for example `tailscale serve 8080`. It uses the Go standard library and Cobra for the command line.
 
 ## Install
 
@@ -147,7 +147,7 @@ If you give `--config` and the file does not exist, quickproxy exits with an err
 }
 ```
 
-A key is a path prefix. It can have many segments. A segment in braces, such as `{val}`, is a parameter. A parameter matches any one segment. A value is the backend URL. It can have a path, and the path can use the parameters of its key.
+A key is a path prefix. It can have many segments. A segment in braces, such as `{val}`, is a parameter. A parameter matches any one segment. A value is the backend URL. It can have a path, and the path can use the parameters of its key. A value can also be a `file://` URL. See "Serve local files".
 
 quickproxy removes the matched prefix and adds the rest of the path to the backend URL. The query string does not change.
 
@@ -180,6 +180,37 @@ If more than one key matches, the key with more segments wins. If two keys have 
 Some apps build absolute links such as `/static/app.js`. These links skip the prefix and fail. If this occurs, set the base path or root URL in the app to its prefix.
 
 quickproxy keeps the `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` headers that it receives. This is correct behind a local front proxy that sets them, such as `tailscale serve`. Do not expose the port on a public network interface, because clients can then forge these headers.
+
+## Serve local files
+
+A route with a `file://` target serves one local file. For example, an AI agent can write an HTML plan, and you can read it in the browser of your phone. quickproxy does not serve directories.
+
+```json
+{
+  "routes": {
+    "/plan": "file:///Users/me/dev/app/plan.html"
+  }
+}
+```
+
+The path must be absolute. The URL must not have a host other than `localhost`, a query, or parameters.
+
+To add a file route from the command line, give a local path that starts with `/`, `./` or `../`. The command makes the path absolute and stores the `file://` URL.
+
+```sh
+quickproxy create route /plan ./plan.html
+```
+
+A target without a scheme and without one of these starts, such as `grafana` or `127.0.0.1:3000`, is an error. quickproxy cannot know if you mean a backend or a local file.
+
+The command fails if the path does not exist or is not a file. The file must be inside your home directory. quickproxy resolves symbolic links before this check, so a link inside your home directory to a file outside it is refused. These rules apply only to `create`. They do not apply to a route file that you edit by hand.
+
+quickproxy serves the file at the prefix itself, for example `/plan`, with no redirect. It obeys these rules:
+
+- Paths below the prefix, such as `/plan/` or `/plan/x`, get a 404.
+- If the target is a directory, or the file does not exist, the client gets a 404. When the file appears, the route works without a reload.
+- Only GET and HEAD requests are allowed. Other methods get a 405.
+- Each response has `Cache-Control: no-cache`. The browser therefore shows the new version after the file changes.
 
 ## Reload
 

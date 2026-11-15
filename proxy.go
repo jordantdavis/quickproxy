@@ -69,12 +69,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pattern = m.Route.Pattern
+	if m.Route.fsPath != "" {
+		backend = "file://" + m.Route.fsPath
+		s.serveFile(sw, r, m)
+		return
+	}
 	if m.Rest == "" {
-		target := m.Prefix + "/"
-		if r.URL.RawQuery != "" {
-			target += "?" + r.URL.RawQuery
-		}
-		http.Redirect(sw, r, target, http.StatusPermanentRedirect)
+		redirectToSlash(sw, r, m)
 		return
 	}
 	backend = m.Route.scheme + "://" + m.Route.host + m.BackendPath()
@@ -149,6 +150,9 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 		link := ""
 		if !strings.Contains(r.Pattern, "{") {
 			link = r.Pattern + "/"
+			if r.fsPath != "" {
+				link = r.Pattern // a file route serves the file at the prefix itself
+			}
 		}
 		rows = append(rows, row{r.Pattern, r.Target, link})
 	}

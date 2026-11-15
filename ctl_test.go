@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -202,5 +203,79 @@ func TestCtlCreateConcurrent(t *testing.T) {
 	wg.Wait()
 	if cfg := readRoutes(t, p); len(cfg.Routes) != n {
 		t.Fatalf("got %d routes, want %d", len(cfg.Routes), n)
+	}
+}
+
+func TestCtlCreateFileTarget(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "routes.json")
+	plan := filepath.Join(dir, "my plan.html")
+	os.WriteFile(plan, []byte("<h1>plan</h1>"), 0o600)
+	t.Setenv("HOME", dir)
+	t.Chdir(dir)
+
+	code, out, errs := ctl(t, p, "create", "route", "/plan", "./my plan.html")
+	want := (&url.URL{Scheme: "file", Path: plan}).String()
+	if code != 0 || out != "route/plan created ("+want+")\n" {
+		t.Fatalf("code %d, out %q, err %q", code, out, errs)
+	}
+	if got := readRoutes(t, p).Routes["/plan"]; got != want {
+		t.Errorf("stored %q, want %q", got, want)
+	}
+
+	before, _ := os.ReadFile(p)
+	for _, target := range []string{"./missing.html", "file://" + filepath.Join(dir, "missing")} {
+		code, _, errs = ctl(t, p, "create", "route", "/missing", target)
+		if code != 1 || !strings.Contains(errs, "nothing exists at") {
+			t.Errorf("%s: code %d, err %q", target, code, errs)
+		}
+	}
+	if after, _ := os.ReadFile(p); !bytes.Equal(before, after) {
+		t.Error("file changed after a failed create")
+	}
+}
+
+func TestCtlCreateTargetForms(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	p := filepath.Join(home, "routes.json")
+	os.MkdirAll(filepath.Join(home, "project", "grafana"), 0o755)
+	os.WriteFile(filepath.Join(home, "project", "plan.html"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "outside.html"), []byte("x"), 0o644)
+	os.Symlink(filepath.Join(dir, "outside.html"), filepath.Join(home, "link.html"))
+	t.Setenv("HOME", home)
+	t.Chdir(filepath.Join(home, "project"))
+
+	// A bare word or host:port is not a local path, even when a folder or
+	// file of that name exists. It is a usage error.
+	for _, target := range []string{"grafana", "127.0.0.1:3000", "plan.html", "."} {
+		code, _, errs := ctl(t, p, "create", "route", "/g", target)
+		if code != 2 || !strings.Contains(errs, "a local path that starts with / or ./") {
+			t.Errorf("%s: code %d, err %q", target, code, errs)
+		}
+	}
+	// A directory is refused, the home directory too.
+	for _, target := range []string{"./grafana", "../", home, "/", "file://" + home} {
+		code, _, errs := ctl(t, p, "create", "route", "/d", target)
+		if code != 1 || !strings.Contains(errs, "is not a file") {
+			t.Errorf("%s: code %d, err %q", target, code, errs)
+		}
+	}
+	// A file outside home is refused, also through a symlink inside home.
+	for _, target := range []string{filepath.Join(dir, "outside.html"), "../../outside.html", "../link.html"} {
+		code, _, errs := ctl(t, p, "create", "route", "/o", target)
+		if code != 1 || !strings.Contains(errs, "serves only files inside your home directory") {
+			t.Errorf("%s: code %d, err %q", target, code, errs)
+		}
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatalf("route file written after failed creates: %v", err)
+	}
+
+	// A file inside home is accepted in every form.
+	for i, target := range []string{"./plan.html", "../project/plan.html", filepath.Join(home, "project", "plan.html")} {
+		if code, _, errs := ctl(t, p, "create", "route", fmt.Sprintf("/ok%d", i), target); code != 0 {
+			t.Errorf("%s: code %d, err %q", target, code, errs)
+		}
 	}
 }
