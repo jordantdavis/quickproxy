@@ -92,6 +92,7 @@ Without a subcommand, quickproxy runs the proxy server.`,
 	root.SetErr(stderr)
 	f := root.Flags()
 	f.StringVar(&configPath, "config", "", configFlagUsage)
+	_ = root.MarkFlagFilename("config", "json")
 	f.StringVar(&listen, "listen", "", `listen address (overrides "listen" in the file; default 127.0.0.1:8080)`)
 	f.BoolVar(&showVersion, "version", false, "print the version and exit")
 

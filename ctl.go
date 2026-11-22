@@ -46,6 +46,7 @@ The resource type can be routes, route or rt.`,
 		},
 	}
 	cmd.PersistentFlags().StringVar(configPath, "config", "", configFlagUsage)
+	_ = cmd.MarkPersistentFlagFilename("config", "json")
 	routes.Aliases = routeAliases
 	cmd.AddCommand(routes)
 	return cmd, configPath
@@ -67,6 +68,7 @@ func newGetCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	cmd, configPath := newVerbCmd("get", "Show routes from the route file", routes)
+	routes.ValidArgsFunction = completeRoutePatterns(configPath)
 	f := cmd.PersistentFlags()
 	f.StringVarP(&output, "output", "o", "table", "output format: table, json or name")
 	f.BoolVar(&noHeaders, "no-headers", false, "do not print the table header")
@@ -126,8 +128,42 @@ func newDeleteCmd(stdout io.Writer) *cobra.Command {
 		},
 	}
 	cmd, configPath := newVerbCmd("delete", "Remove routes from the route file", routes)
+	routes.ValidArgsFunction = completeRoutePatterns(configPath)
 	cmd.PersistentFlags().BoolVar(&ignoreNotFound, "ignore-not-found", false, "do not fail if a route does not exist")
 	return cmd
+}
+
+// completeRoutePatterns completes the route patterns in the route file for
+// "get routes" and "delete routes". Each candidate is "pattern\ttarget", so
+// that zsh and fish show the target as the description. It leaves out the
+// patterns that are already on the command line. It uses readConfig, not
+// LoadConfig, so that a file with an invalid route still completes. An error
+// gives no candidates, because completion must not print errors into the
+// shell. configPath must be the pointer that newVerbCmd returns: Cobra parses
+// --config before it calls the function.
+func completeRoutePatterns(configPath *string) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		path, _, err := resolveConfigPath(*configPath)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		cfg, err := readConfig(path)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		given := make(map[string]bool, len(args))
+		for _, a := range args {
+			given[a] = true
+		}
+		var out []string
+		for pattern, target := range cfg.Routes {
+			if !given[pattern] && strings.HasPrefix(pattern, toComplete) {
+				out = append(out, pattern+"\t"+target)
+			}
+		}
+		sort.Strings(out)
+		return out, cobra.ShellCompDirectiveNoFileComp
+	}
 }
 
 // resolveConfigPath returns the --config value, or the default route file

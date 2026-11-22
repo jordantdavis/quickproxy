@@ -65,6 +65,8 @@ source <(quickproxy completion zsh)
 
 For the steps to load it in each new shell, run `quickproxy completion zsh --help`.
 
+The script completes commands, flags and some values. After `get routes` and `delete routes`, it completes the route patterns, and zsh and fish show the target of each pattern. It leaves out the patterns that are already on the command line. The patterns come from the file that `--config` names, or from the default route file. After `--config`, it completes directories and `.json` files.
+
 ## Manage routes from the command line
 
 The `get`, `create` and `delete` subcommands read and change the route file. The command shape is the same as in kubectl: a verb, a resource type, then names and flags. A running server loads each change within 2 seconds.
