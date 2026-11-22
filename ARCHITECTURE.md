@@ -19,7 +19,8 @@ flowchart LR
 - `/_health` gets `ok`.
 - `/` gets the route index page.
 - A path with a `.` or `..` segment gets a 400.
-- A path that matches no route gets a 404.
+
+If `Table.Match` finds no route, `ServeHTTP` sends a 404.
 
 ## Source files
 
